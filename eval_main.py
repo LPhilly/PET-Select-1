@@ -171,17 +171,7 @@ def main(model, dataset):
 import argparse
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate LLM techniques on coding datasets.")
-
-    # Define the arguments
-    parser.add_argument('--model', type=str, required=True, help='The name of the model to evaluate')
-    parser.add_argument('--dataset', type=str, required=True, help='The dataset to use (e.g., HumanEval, MBPP)')
-
-    # Parse the arguments from the terminal
-    args = parser.parse_args()
-
-    # Pass them into your main function
-    main(model=args.model, dataset=args.dataset)
+    main()
 
 
 
