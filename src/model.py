@@ -12,6 +12,8 @@ from google.genai import types
 from google.api_core import exceptions as gcp_exceptions
 from google.genai import errors as genai_errors
 import os
+#client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
 import time
 
 # client = OpenAI(api_key=openai.api_key)
@@ -24,7 +26,7 @@ def call_gemini(message, args, max_retries=10):
 
     client = genai.Client(
         vertexai=True,
-        project="vertex_ai_project_name",
+        project="gen-lang-client-0460465708",
         location="global",
         http_options=types.HttpOptions(timeout = 180000)
     )
@@ -39,7 +41,7 @@ def call_gemini(message, args, max_retries=10):
                 contents=user_content,
                 config=types.GenerateContentConfig(
                     system_instruction=message[0]["content"],
-                    temperature=args.temperature, # THIS SHOULD BE 1!
+                    temperature=1.0, # THIS SHOULD BE 1!
                     max_output_tokens=max_tok,
                     thinking_config=types.ThinkingConfig(thinking_level='medium')
                 ),
@@ -48,7 +50,7 @@ def call_gemini(message, args, max_retries=10):
             text = response.text
 
             if not text:
-                print(f"Malformed text encountered. Retry!")  # Debug: check text
+                print(f"Malformed text encountered. Retry!")
                 max_tok = 8192 # double to accomodate for longer prompt
                 continue # Accomodate for malformed responses
 
@@ -94,11 +96,11 @@ def call_gemini(message, args, max_retries=10):
 
 def call_chat_gpt(message, args):
     wait = 1
-    client = OpenAI(api_key='open_ai_key')
+    client = OpenAI(api_key='my_fake_key')
     while True:
         try:
             ans = client.chat.completions.create(model=args.model,
-            max_tokens=1000,
+            max_tokens=4096,
             messages=message,
             temperature=args.temperature,
             n=1)
@@ -113,7 +115,7 @@ def call_chat_gpt(message, args):
             wait *= 2
 
 def query_firework(message, args, model="deepseek-v3", delay=60):
-    api_key = "fireworks_ai_key"
+    api_key = "my_fake_key'"
     retry = 6
 
     for r in range(0, retry):
@@ -123,8 +125,8 @@ def query_firework(message, args, model="deepseek-v3", delay=60):
             url = "https://api.fireworks.ai/inference/v1/chat/completions"
 
             payload = {
-                "model": f"accounts/fireworks/models/{model}",
-                "max_tokens": 16384,
+                "model": f"accounts/fireworks/models/deepseek-v3p1",
+                "max_tokens": 4096,
                 "temperature": args.temperature,
                 "messages": message
             }
@@ -160,7 +162,7 @@ def query_firework(message, args, model="deepseek-v3", delay=60):
         elif model == "starcoder":
             url = "https://api.fireworks.ai/inference/v1/completions"
             payload = {
-            "model": "accounts/chungyuwang5507-f1662b/deployedModels/starcoder2-15b-bb7b2085",
+            "model": "my_fake_model",
             "max_tokens": 2048,
             "temperature": args.temperature,
             "prompt": message[1]['content']

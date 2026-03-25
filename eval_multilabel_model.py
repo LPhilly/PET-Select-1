@@ -196,19 +196,23 @@ def evaluate_top3_accuracy_and_tokens(
 # ----------------------------- #
 # 3) Example "main" usage
 # ----------------------------- #
+import argparse
 if __name__ == "__main__":
-    arguments = args.get_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test_file", type=str, required=True)
+    args = parser.parse_args()
     # Example usage (you can replace paths with your own)
     set_seed(42)
 
     # Suppose your multi-label model is saved at this path:
-    model_path_embedding = "PET_model_result/code_complex_contrastive_model"
-    model_path_classification = "PET_model_result/classification_model/multilabel_code_complex_classification_model_parameters.pth"
-    top_k = arguments.top_k
+    model_path_embedding = "/PET-Select/PET_model_result /code_complex_contrastive_model"
+    model_path_classification = "/PET-Select/PET_model_result /classification_model/multilabel_code_complex_classification_model_parameters2.pth"
+    top_k = 3
 
     # Load test data from JSONL
-    test_file_path = "PET_model_dataset/code_complex_classification_dataset_test.jsonl"
-    with open(test_file_path, "r") as f:
+    #test_file_path = "PET_model_dataset/code_complex_classification_dataset_test.jsonl"
+    test_file_path = 'result/model_result_acc/APPS_deepseek-v3.jsonl'
+    with open(args.test_file, "r") as f:
         test_data = [json.loads(line) for line in f]
 
     # Create multi-label model and load parameters
