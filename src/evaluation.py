@@ -4,6 +4,8 @@ import sys
 import textwrap
 import ast
 import json
+import os
+
 import signal
 
 
@@ -226,6 +228,7 @@ check(solution)
         # signal.alarm(5)
         return True
     except Exception as e:
+        print(code)
         print("failed")
         return False
     
@@ -250,11 +253,11 @@ def check_apps(code, assertion):
 
 
 def check_stdin(code: str, input_data: str, expected_output: str, timeout=5):
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".py",
-        delete=False
-    ) as f:
+    # If code defines solution() but never calls it, append the call
+    if 'def solution()' in code and code.count('solution()') == 1:
+        code = code + '\n\nsolution()'
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(code)
         file_path = f.name
 
@@ -289,11 +292,7 @@ def check_stdin(code: str, input_data: str, expected_output: str, timeout=5):
         return False
 
 def check_livecodebench(code: str, tests: str, timeout=5):
-    full_program = textwrap.dedent(f"""
-    {code}
-
-    {tests}
-    """)
+    full_program = f"{code}\n\n{tests}"
 
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -323,57 +322,130 @@ def check_livecodebench(code: str, tests: str, timeout=5):
         print("failed")
         return False
 
-def check_functional(code: str, test_data: dict):
-    namespace = {}
 
-    # 1️⃣ Load the code
-    try:
-        exec(code, namespace)
-    except Exception as e:
-        print(e)
-        return False
+def check_functional(code: str, test_data: dict, timeout=5):
+    args = parse_input(test_data["input"])
+    print(args)
+    print(test_data["input"])
+    expected = json.loads(test_data["output"]) if isinstance(test_data["output"], str) else test_data["output"]
+    full_program = f"""
+import json
+from typing import List, Dict, Tuple, Optional, Set
+import types
+import inspect
 
-    cls = namespace["Solution"]
-    obj = cls()  # instantiate
-    # pick first public method
+{code}
+
+args = {args}
+expected = {expected}
+
+if 'Solution' in dir():
+    obj = Solution()
     methods = [m for m in dir(obj) if callable(getattr(obj, m)) and not m.startswith("__")]
     if not methods:
-        print("class `Solution` has no callable methods")
-        return False
-    method_name = methods[0]
-    fn = getattr(obj, method_name)
-
-    if fn is None:
-        print("No function or class method found to test")
-        return False
-
-
-    calls = [(test_data["input"], test_data["output"])]
-
-    for inp, expected in calls:
+        raise RuntimeError("No callable methods found on Solution")
+    fn = getattr(obj, methods[0])
+    try:
+        result = fn(*args)
+    except TypeError:
         try:
-            # parse JSON-style strings if necessary
-            args = parse_input(inp)
+            flat_args = args[0] if len(args) == 1 and isinstance(args[0], list) else args
+            result = fn(*flat_args)
+        except TypeError:
+            result = fn(flat_args)
+else:
+    fns = [v for v in globals().values() if isinstance(v, types.FunctionType)]
+    if not fns:
+        raise RuntimeError("No callable functions found")
+    result = fns[0](*args)
 
-            # if multi-argument function, unpack
-            out = fn(*args)
-            expected_parsed = json.loads(expected) if isinstance(expected, str) else expected
+assert result == expected, f"Expected {{expected}}, got {{result}}"
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+        f.write(full_program)
+        temp_path = f.name
+
+    try:
+        subprocess.run(
+            ["python3", temp_path],
+            check=True,
+            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        print("correct")
+        return True
+    except subprocess.TimeoutExpired:
+        print("timeout")
+        return False
+    except subprocess.CalledProcessError as e:
+        print(e.stderr)
+        print(code)
+        print("failed")
+        return False
+    finally:
+        os.remove(temp_path)
+def check_bigcodebench(code: str, tests: str, timeout=5):
+    full_program = textwrap.dedent(f"""
+{code}
+
+{tests}
+""")
+
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".py",
+        delete=False
+    ) as f:
+        f.write(full_program)
+        temp_path = f.name
+
+    try:
+        subprocess.run(
+            ["python3", temp_path],
+            check=True,
+            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        print("correct")
+        return True
+
+    except subprocess.TimeoutExpired:
+        print("timeout")
+        return False
+
+    except subprocess.CalledProcessError as e:
+        print("failed")
+        return False
+
+    finally:
+        os.remove(temp_path)
 
 
-        except Exception as e:
-            print("runtime error during call")
-            print(e)
-            return False
+def eval_bigcodebench(code: str, tests: str, timeout=5):
+    full_test = '''
+{code}
 
-        if out != expected_parsed:
-            print("wrong answer")
-            return False
+{tests}
+'''
+    full_test = full_test.format(code=code, tests=tests)
 
-    print("correct")
-    return True
+    with open('temp.py', 'w') as f:
+        f.write(full_test)
 
+    try:
+        subprocess.run(["python3", "temp.py"], check=True, timeout=timeout)
+        print("correct")
+        return True
+    except Exception as e:
+        print("failed")
+        return False
 
 def parse_input(inp_str):
     lines = inp_str.splitlines()
     args = [json.loads(line) for line in lines]
     return args
+
