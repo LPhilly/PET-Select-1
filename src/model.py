@@ -35,6 +35,7 @@ def call_gemini(message, args, max_retries=10):
 
         try:
             user_content = message[1]["content"]
+            print(user_content)
 
             response = client.models.generate_content(
                 model="gemini-3-flash-preview",
@@ -48,10 +49,11 @@ def call_gemini(message, args, max_retries=10):
             )
 
             text = response.text
+            print(text)
 
             if not text:
                 print(f"Malformed text encountered. Retry!")
-                max_tok = 8192 # double to accomodate for longer prompt
+                max_tok = 4096
                 continue # Accomodate for malformed responses
 
             meta = response.usage_metadata
@@ -115,55 +117,92 @@ def call_chat_gpt(message, args):
             wait *= 2
 
 def query_firework(message, args, model="deepseek-v3", delay=60):
-    api_key = "my_fake_key'"
+    api_key = "fake key"
     retry = 6
 
     for r in range(0, retry):
 
+        import json
+        import time
+        import requests
+
+        # Assuming this is inside your retry loop
         if "deepseek-v3" in model:
 
             url = "https://api.fireworks.ai/inference/v1/chat/completions"
 
             payload = {
-                "model": f"accounts/fireworks/models/deepseek-v3p1",
+                "model": "accounts/fireworks/models/deepseek-v3p1",
                 "max_tokens": 4096,
                 "temperature": args.temperature,
-                "messages": message
+                "messages": message,
+                "stream": True,
+                "stream_options": {"include_usage": True}
             }
 
             headers = {
-                "Accept": "application/json",
+                "Accept": "text/event-stream",
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
+                "Authorization": f"Bearer {api_key}",
             }
 
-            response = requests.request("POST", url, json=payload, headers=headers)
+            # Passed stream=True to the request
+            response = requests.request("POST", url, json=payload, headers=headers, stream=True)
 
             if response.status_code == 200:
-                try:
-                    data = response.json()
+                content = ""
+                input_token = 0
+                output_token = 0
 
-                    # Extract content
-                    content = data["choices"][0]["message"]["content"]
-                    input_token = data["usage"]["prompt_tokens"]
-                    output_token = data["usage"]["completion_tokens"]
+                try:
+
+                    for line in response.iter_lines():
+                        if line:
+                            line_str = line.decode('utf-8')
+
+                            if line_str.startswith("data: "):
+                                data_str = line_str[6:]
+
+                                if data_str == "[DONE]":
+                                    break
+
+                                data_json = json.loads(data_str)
+
+
+                                if data_json.get("choices"):
+                                    delta = data_json["choices"][0].get("delta", {})
+                                    if "content" in delta:
+                                        chunk_text = delta["content"]
+                                        print(chunk_text, end="", flush=True)
+                                        content += chunk_text
+
+
+                                if data_json.get("usage"):
+                                    input_token = data_json["usage"].get("prompt_tokens", 0)
+                                    output_token = data_json["usage"].get("completion_tokens", 0)
+
+                    print()
+
+                    # Return exactly what your original logic returned
                     return content, input_token, output_token
+
                 except json.JSONDecodeError as e:
-                    # Return an error message if JSON decoding fails
-                    print(response.text)
+                    # Catch stream parsing issues and trigger your loop's continue
+                    print(f"\nStream parsing error: {e}")
                     continue
+
             else:
+                # Your existing exponential backoff logic
                 print(response.text)
                 time.sleep(min(delay, 60))
                 print(f"waiting for {delay}s")
                 delay *= 2
                 continue
-
         elif model == "starcoder":
             url = "https://api.fireworks.ai/inference/v1/completions"
             payload = {
             "model": "my_fake_model",
-            "max_tokens": 2048,
+            "max_tokens": 4096,
             "temperature": args.temperature,
             "prompt": message[1]['content']
             }
@@ -197,6 +236,6 @@ def query_firework(message, args, model="deepseek-v3", delay=60):
 
 def get_embedding(text, model='text-embedding-3-large'):
     client = OpenAI(
-        api_key='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')
+        api_key='f')
     response = client.embeddings.create(input=text, model = model)
     return response.data[0].embedding
