@@ -2,7 +2,7 @@
 
 **PET-Select** is a PET-agnostic selection model designed to enhance the accuracy and efficiency of large language models (LLMs) in code generation. While numerous prompt engineering techniques (PETs) exist, no single method works optimally for all queries. PET-Select addresses this challenge by leveraging code complexity as a proxy to classify queries and select the most appropriate PET dynamically.
 
-By incorporating contrastive learning, PET-Select effectively distinguishes between simple and complex programming tasks, ensuring that the best-suited PET is applied. Our evaluations on multiple benchmarks, including HumanEval, HumanEval+, MBPP, MBPP+, and APPS, using GPT-3.5 Turbo, GPT-4o, and DeepSeek-V3, demonstrate up to 1.9% improvement in pass@1 accuracy and a 49.9% reduction in token usage.
+By incorporating contrastive learning, PET-Select effectively distinguishes between simple and complex programming tasks, ensuring that the best-suited PET is applied. Our evaluations on multiple benchmarks using Gemini 3 Flash, GPT-4o, and DeepSeek-V3, demonstrate up to 1.8% improvement in pass@1 accuracy and a 52.4% reduction in normalized token usage.
 
 This repository provides the implementation of PET-Select.
 
