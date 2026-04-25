@@ -5,6 +5,7 @@ import textwrap
 import ast
 import json
 import os
+import re
 
 import signal
 
@@ -208,29 +209,104 @@ if __name__ == "__main__":
 
     
 
+
+
+
+# Pre-amble injected before every candidate solution
+_STDLIB_PREAMBLE = """import sys, os, math, re, itertools, functools, collections, heapq, bisect
+from typing import List, Tuple, Dict, Set, Optional, Any
+from collections import defaultdict, Counter, deque
+from itertools import combinations, permutations, product
+from functools import lru_cache, reduce
+from math import gcd, lcm, inf, ceil, floor, sqrt, log
+import sys as _sys, io as _io, inspect
+""".strip()
+
 def eval_apps(code, test_string):
-    full_test = '''
+        # Strip the __main__ block to prevent stdin hanging
+        code = re.sub(r'if __name__\s*==\s*["\']__main__["\'].*', '', code, flags=re.DOTALL).strip()
+
+        # Normalize function name: rename `solve` (and common variants) to `solution`
+        code = re.sub(r'\bdef\s+solve\s*\(', 'def solution(', code)
+
+        # Fix functions that take no arguments but should accept an optional input string.
+        # Pattern: `def solution():` -> `def solution(stdin_input=None):`
+        def _fix_solution_signature(m):
+            return 'def solution(stdin_input=None):\n    if stdin_input is not None:\n        sys.stdin = io.StringIO(stdin_input)\n    '
+
+        # Only patch if signature is truly empty: def solution():
+        code = re.sub(
+            r'\bdef solution\(\s*\)\s*:',
+            _fix_solution_signature,
+            code
+        )
+
+        # Wrapper so that check(solution) works whether solution returns a value
+        # or prints to stdout, and regardless of whether it accepts an argument.
+        _harness = textwrap.dedent("""
+        def _wrap_solution(fn):
+            sig = inspect.signature(fn)
+            params = [
+                p for p in sig.parameters.values()
+                if p.default is inspect.Parameter.empty
+            ]
+            accepts_input = len(params) > 0
+
+            def _candidate(stdin_str):
+                buf = _io.StringIO()
+                old_stdin  = _sys.stdin
+                old_stdout = _sys.stdout
+                _sys.stdin  = _io.StringIO(stdin_str)
+                _sys.stdout = buf
+                try:
+                    result = fn(stdin_str) if accepts_input else fn()
+                finally:
+                    _sys.stdin  = old_stdin
+                    _sys.stdout = old_stdout
+                output = buf.getvalue().strip()
+                if result is None:
+                    return output
+                return str(result).strip()
+            return _candidate
+            """)
+
+        full_test = textwrap.dedent(f"""
+{_STDLIB_PREAMBLE}
+
 {code}
+
+{_harness}
+
+solution = _wrap_solution(solution)
 
 {test_string}
 
 check(solution)
-'''
-    full_test = full_test.format(code=code, test_string=test_string)
-    with open('temp.py', 'w') as f:
-        f.write(full_test)
-    # print(full_test)
-    # quit()
-    try:
-        # signal.signal(signal.SIGALRM, timeout_handler)
-        subprocess.run(["python3", "temp.py"], check=True, timeout=5)
-        print("correct")
-        # signal.alarm(5)
-        return True
-    except Exception as e:
-        print(code)
-        print("failed")
-        return False
+""")
+
+        with tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".py",
+                delete=False
+        ) as f:
+            f.write(full_test)
+            temp_path = f.name
+        try:
+            subprocess.run(
+                ["python3", temp_path],
+                check=True,
+                timeout=10,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            print("correct")
+            return True
+        except Exception as e:
+            print(code)
+            print("failed")
+            print(e)
+            return False
     
 def check_apps(code, assertion):
     full_test = '''
@@ -249,6 +325,7 @@ def check_apps(code, assertion):
         return True
     except Exception as e:
         print("failed")
+        print(f"ERROR: {e}")
         return False
 
 
@@ -280,7 +357,12 @@ def check_stdin(code: str, input_data: str, expected_output: str, timeout=5):
             print("correct")
             return True
         else:
-            print("wrong answer")
+
+            print(stdout)
+            print(expected)
+            print(code)
+            print("failed")
+            return False
             return False
 
     except subprocess.TimeoutExpired:
@@ -319,6 +401,7 @@ def check_livecodebench(code: str, tests: str, timeout=5):
         return False
 
     except subprocess.CalledProcessError as e:
+        print(e.stderr)
         print("failed")
         return False
 
@@ -341,6 +424,7 @@ expected = {expected}
 
 if 'Solution' in dir():
     obj = Solution()
+    print(dir(obj))
     methods = [m for m in dir(obj) if callable(getattr(obj, m)) and not m.startswith("__")]
     if not methods:
         raise RuntimeError("No callable methods found on Solution")
@@ -355,6 +439,7 @@ if 'Solution' in dir():
             result = fn(flat_args)
 else:
     fns = [v for v in globals().values() if isinstance(v, types.FunctionType)]
+    print(fns)
     if not fns:
         raise RuntimeError("No callable functions found")
     result = fns[0](*args)
@@ -376,10 +461,13 @@ assert result == expected, f"Expected {{expected}}, got {{result}}"
         )
         print("correct")
         return True
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        print(e.stderr)
+        print(code)
         print("timeout")
         return False
     except subprocess.CalledProcessError as e:
+
         print(e.stderr)
         print(code)
         print("failed")
@@ -427,6 +515,10 @@ def check_bigcodebench(code: str, tests: str, timeout=5):
 
 def eval_bigcodebench(code: str, tests: str, timeout=5):
     full_test = '''
+import json
+from typing import List, Dict, Tuple, Optional, Set
+import types
+
 {code}
 
 {tests}
